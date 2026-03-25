@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Zelda: Breath of the Browser</title>
+  <style>
+    body { margin: 0; overflow: hidden; }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+
+// ======= SCENE SETUP =======
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x87ceeb); // sky
+
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+let cameraTheta = 0, cameraPhi = 1, cameraRadius = 10;
+
+// ======= RENDERER =======
+const renderer = new THREE.WebGLRenderer();
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
+
+// ======= PLAYER =======
+const playerGeometry = new THREE.BoxGeometry(1, 2, 1);
+const playerMaterial = new THREE.MeshStandardMaterial({ color: 0x007700 });
+const player = new THREE.Mesh(playerGeometry, playerMaterial);
+player.position.y = 2;
+scene.add(player);
+
+// ======= LIGHT =======
+const light = new THREE.DirectionalLight(0xffffff, 1);
+light.position.set(10, 20, 10);
+scene.add(light);
+scene.add(new THREE.AmbientLight(0xffffff, 0.3));
+
+// ======= TERRAIN GENERATION (mountains & trees) =======
+function generateTerrain(size, step) {
+  const geometry = new THREE.PlaneGeometry(size, size, size/step, size/step);
+  geometry.rotateX(-Math.PI/2);
+
+  // Mountains with Perlin-like noise
+  for(let i=0; i<geometry.attributes.position.count; i++) {
+    let x = geometry.attributes.position.getX(i);
+    let z = geometry.attributes.position.getZ(i);
+    let y = Math.max(0, Math.sin(0.2*x)*Math.cos(0.2*z)*3 + Math.random());
+    geometry.attributes.position.setY(i, y);
+  }
+  geometry.computeVertexNormals();
+
+  const mat = new THREE.MeshStandardMaterial({ color: 0x228822, flatShading: true });
+  const mesh = new THREE.Mesh(geometry, mat);
+  scene.add(mesh);
+
+  // Trees (cones on cylinders)
+  for(let t=0; t<60; t++) {
+    let tx = (Math.random()-0.5)*size*0.9;
+    let tz = (Math.random()-0.5)*size*0.9;
+    let v = geometry.attributes.position;
+    // Find nearest terrain point to get y
+    let minDist = 999, treeY = 0;
+    for(let i=0; i<v.count; i++) {
+      let dx = tx-v.getX(i), dz = tz-v.getZ(i);
+      let dist = dx*dx+dz*dz;
+      if(dist < minDist) { minDist = dist; treeY = v.getY(i);}
+    }
+    // Tree trunk
+    const trunk = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.1,0.1,0.7), 
+      new THREE.MeshStandardMaterial({color:0x7a5430}));
+    trunk.position.set(tx, treeY+0.35, tz);
+    scene.add(trunk);
+    // Foliage
+    const leaves = new THREE.Mesh(
+      new THREE.ConeGeometry(0.5, 1, 6), 
+      new THREE.MeshStandardMaterial({color:0x228822}));
+    leaves.position.set(tx, treeY+1, tz);
+    scene.add(leaves);
+  }
+}
+generateTerrain(40, 2);
+
+// ======= CONTROLS =======
+
+const keys = { w: false, a: false, s: false, d: false };
+window.addEventListener('keydown', e => { 
+  if(keys.hasOwnProperty(e.key)) keys[e.key] = true;
+});
+window.addEventListener('keyup', e => {
+  if(keys.hasOwnProperty(e.key)) keys[e.key] = false;
+});
+// Camera rotation
+window.addEventListener('keydown', e => {
+  if(e.key === 'ArrowLeft') cameraTheta -= 0.07;
+  if(e.key === 'ArrowRight') cameraTheta += 0.07;
+  if(e.key === 'ArrowUp') cameraPhi -= 0.05;
+  if(e.key === 'ArrowDown') cameraPhi += 0.05;
+  cameraPhi = Math.max(0.3, Math.min(Math.PI/2, cameraPhi));
+});
+
+// ======= GAME LOOP =======
+function animate() {
+  // Player movement relative to world axes
+  let speed = 0.13;
+  if(keys['w']) player.position.z -= speed;
+  if(keys['s']) player.position.z += speed;
+  if(keys['a']) player.position.x -= speed;
+  if(keys['d']) player.position.x += speed;
+
+  // Position camera to always orbit/look at player
+  let up = Math.cos(cameraPhi);
+  let planar = Math.sin(cameraPhi);
+  camera.position.x = player.position.x + cameraRadius * Math.sin(cameraTheta) * planar;
+  camera.position.z = player.position.z + cameraRadius * Math.cos(cameraTheta) * planar;
+  camera.position.y = player.position.y + cameraRadius * up + 2;
+  camera.lookAt(player.position);
+
+  renderer.render(scene, camera);
+  requestAnimationFrame(animate);
+}
+animate();
+
+window.addEventListener('resize',()=>{
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>
